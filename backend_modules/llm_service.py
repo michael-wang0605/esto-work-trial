@@ -8,13 +8,19 @@ import json
 from typing import List, Dict, Any
 
 # Get config from environment (matching minimal_backend.py)
-API_KEY = os.getenv("LLM_API_KEY", "")
+API_KEY = os.getenv("LLM_API_KEY", "").strip()
 TEXT_MODEL = os.getenv("LLM_MODEL", "gemini-2.0-flash")
 VISION_MODEL = os.getenv("LLM_VISION_MODEL", "gemini-2.0-flash")
 GEMINI_URL = os.getenv("LLM_URL", "https://generativelanguage.googleapis.com/v1beta/models")
 
 async def call_gemini(messages: List[Dict[str, Any]], model: str, functions: List[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Call Gemini API with optional function calling"""
+    # Validate API key before making request
+    if not API_KEY:
+        error_msg = "LLM_API_KEY environment variable is not set or is empty. Cannot call Gemini API."
+        print(f"❌ {error_msg}")
+        raise ValueError(error_msg)
+    
     # Convert OpenAI format to Gemini format
     contents = []
     for msg in messages:

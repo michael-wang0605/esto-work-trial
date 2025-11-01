@@ -8,7 +8,7 @@ import StatsCard from "@/components/StatsCard";
 import SearchBar from "@/components/SearchBar";
 import AuthWrapper from "@/components/AuthWrapper";
 import ActivityFeed from "@/components/ActivityFeed";
-import { FileText, Filter, CheckCircle, Clock, XCircle, AlertTriangle, RefreshCw, MessageSquare, Calendar, Mail, ExternalLink, Trophy, UserSearch } from "lucide-react";
+import { FileText, Filter, CheckCircle, Clock, XCircle, AlertTriangle, RefreshCw, MessageSquare, Calendar, Mail, ExternalLink, Trophy } from "lucide-react";
 import { generateGoogleCalendarLink } from "@/lib/utils";
 import BestApplicantModal from "@/components/BestApplicantModal";
 import { useSession } from "next-auth/react";
@@ -55,8 +55,6 @@ export default function ApplicationsPage() {
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
   const refreshCountRef = useRef<number>(0);
   const hardcodedApplicationsRef = useRef<TenantApplication[]>([]);
-  const [bestTenantName, setBestTenantName] = useState<string | null>(null);
-  const [findingBestTenant, setFindingBestTenant] = useState(false);
 
   useEffect(() => {
     // On initial load only, check inbox then load applications
@@ -276,39 +274,6 @@ John Smith`;
     app.property?.address.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const handleFindBestTenant = async () => {
-    if (!session?.user?.id) {
-      alert("Please log in to use this feature");
-      return;
-    }
-
-    setFindingBestTenant(true);
-    setBestTenantName(null);
-    setError(null);
-
-    try {
-      const response = await fetch("/api/applications/find-best-tenant", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-
-      const result = await response.json();
-      
-      if (result.success && result.tenantName) {
-        setBestTenantName(result.tenantName);
-      } else {
-        setError(result.error || "Failed to find best tenant");
-      }
-    } catch (err) {
-      console.error("Failed to find best tenant:", err);
-      setError(err instanceof Error ? err.message : "Failed to analyze applicants");
-    } finally {
-      setFindingBestTenant(false);
-    }
-  };
-
   const handleFindBestApplicant = async (propertyId: string) => {
     if (!session?.user?.id) {
       alert("Please log in to use this feature");
@@ -494,47 +459,16 @@ John Smith`;
           title="Tenant Applications"
           subtitle="Review and manage tenant applications"
           action={
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleFindBestTenant}
-                disabled={findingBestTenant || loading}
-                className="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg hover:from-blue-700 hover:to-purple-700 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
-              >
-                <UserSearch className={`w-4 h-4 ${findingBestTenant ? "animate-pulse" : ""}`} />
-                {findingBestTenant ? "Finding..." : "Find Best Tenant"}
-              </button>
-              <button
-                onClick={handleRefresh}
-                disabled={checkingInbox || loading}
-                className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <RefreshCw className={`w-4 h-4 ${checkingInbox ? "animate-spin" : ""}`} />
-                {checkingInbox ? "Checking..." : "Refresh"}
-              </button>
-            </div>
+            <button
+              onClick={handleRefresh}
+              disabled={checkingInbox || loading}
+              className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <RefreshCw className={`w-4 h-4 ${checkingInbox ? "animate-spin" : ""}`} />
+              {checkingInbox ? "Checking..." : "Refresh"}
+            </button>
           }
         />
-
-        {/* Best Tenant Result */}
-        {bestTenantName && (
-          <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-200 rounded-xl shadow-md">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-600 rounded-lg">
-                <Trophy className="w-6 h-6 text-white" />
-              </div>
-              <div className="flex-1">
-                <h3 className="text-sm font-semibold text-slate-700 mb-1">Best Tenant Selected</h3>
-                <p className="text-2xl font-bold text-blue-900">{bestTenantName}</p>
-              </div>
-              <button
-                onClick={() => setBestTenantName(null)}
-                className="text-slate-500 hover:text-slate-700 transition-colors"
-              >
-                <XCircle className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
-        )}
 
         {/* Stats Overview - Hackathon Style */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
@@ -592,30 +526,6 @@ John Smith`;
             </div>
           </div>
 
-          {/* Best Applicant Buttons for All Properties with Applications */}
-          {propertiesWithApplications.length > 0 && (
-            <div className="pt-4 border-t border-slate-200">
-              <div className="flex items-center gap-2 mb-3">
-                <Trophy className="w-5 h-5 text-amber-600" />
-                <h3 className="text-sm font-semibold text-slate-700">Find Best Applicant</h3>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {propertiesWithApplications.map((group) => (
-                  <button
-                    key={group.property.id}
-                    onClick={() => handleFindBestApplicant(group.property.id)}
-                    className="px-4 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 text-white text-sm font-medium hover:from-blue-700 hover:to-purple-700 transition-all shadow-md hover:shadow-lg flex items-center gap-2"
-                  >
-                    <Trophy className="w-4 h-4" />
-                    Best for {group.property.name}
-                    <span className="bg-white/20 px-2 py-0.5 rounded text-xs">
-                      {group.applications.length} shown
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Applications List */}
