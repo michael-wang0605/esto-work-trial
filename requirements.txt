@@ -1,0 +1,17 @@
+fastapi
+uvicorn[standard]
+pydantic==2.*
+requests
+httpx
+twilio==8.10.0
+python-dotenv==1.0.0
+gunicorn==21.2.0
+python-multipart
+# Database dependencies (commented out for minimal backend)
+# sqlmodel
+# SQLAlchemy
+# psycopg2-binary==2.9.9
+# asyncpg==0.29.0  # Not compatible with Python 3.13
+# alembic
+# flask==3.0.0
+# jinja2==3.1.2

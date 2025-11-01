@@ -1,0 +1,48 @@
+services:
+  - type: web
+    name: propai-backend
+    env: python
+    plan: free
+    runtime: python-3.11.9
+    buildCommand: pip install -r requirements.txt
+    startCommand: python start_backend.py
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: PORT
+        value: 8000
+      - key: RELOAD
+        value: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ten8Link
+          property: connectionString
+      - key: LLM_API_KEY
+        value: AIzaSyBG2RIEPLO_d37g4X9TWMRxJoG74jWO-g0
+      - key: LLM_MODEL
+        value: gemini-2.0-flash
+      - key: LLM_VISION_MODEL
+        value: gemini-2.0-flash
+      - key: LLM_URL
+        value: https://generativelanguage.googleapis.com/v1beta/models
+      - key: TWILIO_FROM_NUMBER
+        sync: false
+      - key: USE_FAKE_TWILIO
+        value: "0"
+      - key: FRONTEND_ORIGIN
+        value: https://prop-ai-three.vercel.app
+      # Tenant Screening System - Add these via Render dashboard instead of committing secrets
+      # - key: AGENTMAIL_API_KEY
+      #   sync: false
+      # - key: AGENTMAIL_INBOX_ID
+      #   sync: false
+      # - key: AGENTMAIL_API_URL
+      #   value: https://api.agentmail.com
+      # - key: HYPERSPELL_API_KEY
+      #   sync: false
+      # - key: HYPERSPELL_API_URL
+      #   value: https://api.hyperspell.com
+
+databases:
+  - name: ten8Link
+    plan: free
