@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import PageLayout from "@/components/PageLayout";
 import PageHeader from "@/components/PageHeader";
@@ -56,63 +56,8 @@ export default function ApplicationsPage() {
   const refreshCountRef = useRef<number>(0);
   const hardcodedApplicationsRef = useRef<TenantApplication[]>([]);
 
-  useEffect(() => {
-    // On initial load only, check inbox then load applications
-    loadApplications();
-  }, [statusFilter]);
-
-  useEffect(() => {
-    // Check inbox on initial page load
-    checkAgentmailInbox().then(() => {
-      loadApplications();
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Real-time polling for status updates
-  useEffect(() => {
-    // Poll every 3 seconds for real-time updates
-    pollingIntervalRef.current = setInterval(() => {
-      loadApplications();
-      setLastUpdateTime(new Date());
-    }, 3000);
-
-    return () => {
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-      }
-    };
-  }, [statusFilter]);
-
-  const checkAgentmailInbox = async () => {
-    try {
-      setCheckingInbox(true);
-      const response = await fetch("/api/applications/check-inbox", {
-        method: "POST",
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.details || "Failed to check inbox");
-      }
-
-      const data = await response.json();
-      
-      // Wait a moment for backend processing, then reload applications
-      // The backend processes in background, so we give it a short delay
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      return data;
-    } catch (err) {
-      console.error("Failed to check Agentmail inbox:", err);
-      // Don't show error to user if inbox check fails, just proceed to reload
-      return { success: false, error: err instanceof Error ? err.message : "Unknown error" };
-    } finally {
-      setCheckingInbox(false);
-    }
-  };
-
-  const loadApplications = async () => {
+  // Memoize loadApplications to prevent unnecessary re-renders and allow safe use in dependency arrays
+  const loadApplications = useCallback(async () => {
     const url = `/api/applications${statusFilter !== "all" ? `?status=${statusFilter}` : ""}`;
     try {
       setLoading(true);
@@ -155,6 +100,62 @@ export default function ApplicationsPage() {
       setApplications([...hardcodedApplicationsRef.current]);
     } finally {
       setLoading(false);
+    }
+  }, [statusFilter]);
+
+  // Load applications immediately when statusFilter changes
+  useEffect(() => {
+    loadApplications();
+  }, [loadApplications]);
+
+  useEffect(() => {
+    // Check inbox on initial page load only
+    checkAgentmailInbox().then(() => {
+      loadApplications();
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Real-time polling for status updates - use loadApplications in dependency array since it's memoized
+  useEffect(() => {
+    // Poll every 3 seconds for real-time updates
+    pollingIntervalRef.current = setInterval(() => {
+      loadApplications();
+      setLastUpdateTime(new Date());
+    }, 3000);
+
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+      }
+    };
+  }, [loadApplications]);
+
+  const checkAgentmailInbox = async () => {
+    try {
+      setCheckingInbox(true);
+      const response = await fetch("/api/applications/check-inbox", {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.details || "Failed to check inbox");
+      }
+
+      const data = await response.json();
+      
+      // Wait a moment for backend processing, then reload applications
+      // The backend processes in background, so we give it a short delay
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      return data;
+    } catch (err) {
+      console.error("Failed to check Agentmail inbox:", err);
+      // Don't show error to user if inbox check fails, just proceed to reload
+      return { success: false, error: err instanceof Error ? err.message : "Unknown error" };
+    } finally {
+      setCheckingInbox(false);
     }
   };
 

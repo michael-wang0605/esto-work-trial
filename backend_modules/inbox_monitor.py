@@ -230,6 +230,9 @@ async def process_incoming_email_data(
         status = "approved"
         print(f"✅ HARDCODED MODE: All emails automatically approved")
         
+        # Initialize agentmail_client for sending emails (needed regardless of DB save)
+        agentmail_client = AgentmailClient()
+        
         # Save to database via frontend API endpoint
         import httpx
         
@@ -266,8 +269,6 @@ async def process_incoming_email_data(
                 "screeningScore": score,
                 "screeningNotes": notes
             }
-            
-            agentmail_client = AgentmailClient()
             
             # Call frontend internal API to save application
             try:
