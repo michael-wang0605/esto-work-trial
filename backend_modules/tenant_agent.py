@@ -24,43 +24,35 @@ YOUR WORKFLOW:
 1. When an application arrives:
    - Extract applicant data (name, email, credit score, income)
    - Calculate screening score (green/yellow/red based on credit + income only)
-   - Store application in Hyperspell as a searchable "memory"
-   - Query Hyperspell to see how this applicant ranks against others
+   - Compare applicant against existing applicants in database
 
 2. Decision Making (based on credit score and income only):
    - GREEN score (credit ≥680, income ≥3x rent): Auto-approve, send scheduling email
-   - YELLOW score (credit ≥600, income ≥2.5x rent): Review manually or query Hyperspell for comparison
+   - YELLOW score (credit ≥600, income ≥2.5x rent): Review manually or compare with other applicants
    - RED score (credit <600 or income <2.5x rent): Auto-reject or flag for review
 
 3. Ranking Applicants:
-   - Query Hyperspell to find top applicants: "Show me top 5 applicants with credit >700 and income ratio >3x"
+   - Fetch existing applicants from database for comparison
    - Compare new applicant against existing applicants
    - Rank by: credit score (highest first), then income ratio (highest first)
 
 4. Selection:
-   - Use Hyperspell queries to find and rank the best applicants
+   - Use database queries to find and rank the best applicants
    - Property managers contact approved applicants directly
 
 IMPORTANT RULES:
 - Always validate data before making decisions (credit score must be 300-850, income must be positive)
 - Evaluation is based ONLY on credit score and income - no other factors considered
 - If credit score or income is missing, request the missing information before processing
-- Use Hyperspell queries to make data-driven decisions, not just rules
+- Use database queries to make data-driven decisions, not just rules
 - Be professional and helpful in all email communications
-- If Hyperspell query fails, fall back to basic rule-based screening
 - Always log your decisions with reasoning
-
-HYPERSPELL QUERY EXAMPLES:
-- "Show me top 3 applicants for property_123 with credit scores above 700"
-- "Which applicants have income ratio above 3.5x rent?"
-- "Find the best applicant for property_123 ranked by credit score and income"
-- "Rank all applicants by credit score and income ratio"
 
 RESPONSE FORMAT:
 Always provide clear reasoning for your decisions. Use this structure:
 1. Data extracted from application
 2. Screening score calculation
-3. Hyperspell query results (if applicable)
+3. Comparison with other applicants (if applicable)
 4. Decision (approve/reject/review)
 5. Action taken (email sent, calendar event created, etc.)
 
@@ -73,7 +65,7 @@ async def agent_process_application(
     existing_applications_count: int = 0
 ) -> Dict[str, Any]:
     """
-    Intelligent agent processes a tenant application using Gemini + Hyperspell
+    Intelligent agent processes a tenant application using Gemini
     
     Args:
         user_id: Property manager user ID

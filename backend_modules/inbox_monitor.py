@@ -11,7 +11,6 @@ from datetime import datetime
 from backend_modules.agentmail_service import AgentmailClient, get_missing_documents_email_template
 from backend_modules.llm_service import process_tenant_documents
 from backend_modules.screening_service import calculate_screening_score
-from backend_modules.hyperspell_service import HyperspellClient
 from backend_modules.agentmail_service import get_rejection_email_template
 from backend_modules.tenant_agent import agent_process_application
 
@@ -301,102 +300,9 @@ async def process_incoming_email_data(
         # application_id is now from database if saved successfully
         print(f"✅ Application processed: {status} ({score})")
         
-        # Index application in Hyperspell for intelligent querying/ranking
-        try:
-            hyperspell_client = HyperspellClient()
-            
-            # Create comprehensive text representation for Hyperspell memory
-            application_text = f"""
-            Tenant Application: {contact_info['name']}
-            Email: {contact_info['email']}
-            Phone: {contact_info.get('phone', 'N/A')}
-            
-            Credit Score: {extraction_result.get('credit_score', 'Not provided')}
-            Monthly Income: ${extraction_result.get('monthly_income', 0):,.2f}
-            Annual Income: ${extraction_result.get('annual_income', 0):,.2f}
-            Income to Rent Ratio: {(extraction_result.get('monthly_income', 0) / monthly_rent):.2f}x rent
-            Employer: {extraction_result.get('employer', 'Not provided')}
-            
-            Screening Score: {score} ({notes})
-            Status: {status}
-            
-            Documents Provided:
-            - Driver's License: {'Yes' if drivers_license_url else 'No'}
-            - Pay Stubs: {len(pay_stub_urls)} provided
-            - Credit Report: {'Yes' if credit_score_url else 'No'}
-            
-            Property: {application_data.get('propertyId', 'Not specified')}
-            Received: {datetime.now().isoformat()}
-            """
-            
-            memory_result = await hyperspell_client.add_memory(
-                user_id=user_id,
-                text=application_text,
-                collection="tenant_applications",
-                metadata={
-                    "application_id": application_id,
-                    "property_id": application_data.get("propertyId"),
-                    "applicant_email": contact_info['email'],
-                    "applicant_name": contact_info['name'],
-                    "status": status,
-                    "screening_score": score,
-                    "credit_score": extraction_result.get('credit_score'),
-                    "monthly_income": extraction_result.get('monthly_income'),
-                    "income_ratio": (extraction_result.get('monthly_income', 0) / monthly_rent) if monthly_rent > 0 else 0,
-                    "received_at": datetime.now().isoformat()
-                }
-            )
-            
-            if memory_result.get("success"):
-                print(f"✅ Indexed application {application_id} in Hyperspell for querying")
-                
-                # Query Hyperspell immediately after indexing to show ranking
-                if status == "approved":
-                    print(f"\n🔍 QUERYING HYPERSPELL to rank this applicant...")
-                    try:
-                        ranking_preview = await hyperspell_client.query(
-                            user_id=user_id,
-                            query=f"""
-                            Rank all tenant applicants by credit score and income ratio.
-                            Where does {contact_info['name']} rank among all applicants?
-                            """,
-                            collections=["tenant_applications"],
-                            answer=True,
-                            limit=20
-                        )
-                        
-                        if ranking_preview.get("success") and ranking_preview.get("answer"):
-                            print(f"📊 Hyperspell Ranking Result:")
-                            print(f"   {ranking_preview['answer'][:300]}...")
-                    except Exception as preview_error:
-                        print(f"⚠️ Preview ranking query failed: {preview_error}")
-        except Exception as hyperspell_error:
-            print(f"⚠️ Could not index application in Hyperspell: {hyperspell_error}")
-            # Don't fail the workflow if Hyperspell indexing fails
         
         # Send appropriate email based on status
         if status == "approved":
-            # Query Hyperspell to check applicant ranking
-            try:
-                ranking_query = await hyperspell_client.query(
-                    user_id=user_id,
-                    query=f"""
-                    Rank all applicants by credit score and income ratio.
-                    Where does the applicant {contact_info['name']} ({contact_info['email']}) rank?
-                    """,
-                    collections=["tenant_applications"],
-                    answer=True,
-                    limit=10
-                )
-                
-                ranking_info = ""
-                if ranking_query.get("success") and ranking_query.get("answer"):
-                    ranking_info = ranking_query["answer"]
-                    print(f"📊 Hyperspell ranking for {contact_info['name']}: {ranking_info[:100]}")
-            
-            except Exception as ranking_error:
-                print(f"⚠️ Error checking ranking: {ranking_error}")
-            
             # Send approval email (no scheduling - property manager contacts directly)
             from backend_modules.agentmail_service import get_approval_email_template
             subject, body = get_approval_email_template(contact_info["name"])
@@ -434,7 +340,7 @@ async def process_incoming_email_data(
         return {"success": False, "error": str(e)}
 
 async def monitor_inbox(user_id: Optional[str] = None):
-    """Monitor Agentmail inbox for ALL threads and index them in Hyperspell
+    """Monitor Agentmail inbox for ALL threads and process them
     
     Args:
         user_id: User ID to associate applications with. If None, uses DEFAULT_USER_ID env var.
@@ -443,7 +349,6 @@ async def monitor_inbox(user_id: Optional[str] = None):
     
     try:
         client = AgentmailClient()
-        hyperspell_client = HyperspellClient()
         
         # Get ALL threads (not just unread)
         inbox_id = os.getenv("AGENTMAIL_INBOX_ID", "")
@@ -463,7 +368,6 @@ async def monitor_inbox(user_id: Optional[str] = None):
         
         # Process each thread
         processed_count = 0
-        indexed_count = 0
         skipped_count = 0
         
         for thread in threads:
@@ -498,34 +402,6 @@ async def monitor_inbox(user_id: Optional[str] = None):
                     else:
                         print(f"⚠️ Failed to process message {message_id}: {result.get('reason') or result.get('error')}")
                 
-                # ALWAYS extract and index email info in Hyperspell (even if already processed for applications)
-                # This extracts important info (name, credit score, income, etc.) and indexes it
-                if hyperspell_client.api_key:
-                    try:
-                        # Use the new extraction method to get abstracted info
-                        extract_result = await client.extract_and_index_email_info(
-                            thread=full_thread,
-                            user_id=user_id,
-                            hyperspell_client=hyperspell_client
-                        )
-                        if extract_result.get("success"):
-                            abstracted = extract_result.get("abstracted_info", {})
-                            indexed_count += 1
-                            print(f"   ✅ Extracted & indexed: name={abstracted.get('name', 'N/A')}, credit={abstracted.get('credit_score', 'N/A')}, income=${abstracted.get('monthly_income', 0):,.2f}")
-                        else:
-                            print(f"   ⚠️ Could not extract/index email info: {extract_result.get('error')}")
-                    except Exception as extract_error:
-                        print(f"   ⚠️ Error extracting/indexing email info: {extract_error}")
-                        
-                    # Also index full text for searchability (optional - using email_indexer)
-                    try:
-                        from backend_modules.email_indexer import index_single_email_thread
-                        index_result = await index_single_email_thread(user_id, thread_id)
-                        if index_result.get("success") and index_result.get("indexed_count", 0) > 0:
-                            print(f"   💾 Also indexed full text in Hyperspell collection 'agentmail_emails'")
-                    except Exception as index_error:
-                        # Non-fatal - we already have abstracted info indexed above
-                        pass
                 
                 # Small delay between threads
                 await asyncio.sleep(0.5)
@@ -536,7 +412,6 @@ async def monitor_inbox(user_id: Optional[str] = None):
         
         print(f"\n✅ Inbox processing complete:")
         print(f"   📋 Applications processed: {processed_count}")
-        print(f"   💾 Emails indexed in Hyperspell: {indexed_count}")
         print(f"   ⏭️  Skipped: {skipped_count}")
             
     except Exception as e:

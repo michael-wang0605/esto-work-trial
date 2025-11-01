@@ -1,6 +1,6 @@
 """
-Seed script to create 15 mock tenant applications and index them in Hyperspell
-This gives Hyperspell data for the demo so you can query and rank applicants
+Seed script to create 15 mock tenant applications
+This creates demo data for testing and development
 """
 
 import asyncio
@@ -8,7 +8,6 @@ import os
 import httpx
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
-from backend_modules.hyperspell_service import HyperspellClient
 
 # Mock application data - varied credit scores, incomes, statuses
 MOCK_APPLICATIONS = [
@@ -315,69 +314,9 @@ async def create_mock_application_in_database(
         return None
 
 
-async def create_mock_application_memory(
-    hyperspell_client: HyperspellClient,
-    user_id: str,
-    app_data: Dict[str, Any],
-    application_id: Optional[str],
-    property_rent: float = 2000.0,
-    days_ago: int = 0
-) -> Dict[str, Any]:
-    """
-    Create a mock application and index it in Hyperspell
-    """
-    # Calculate received date (days ago)
-    received_date = datetime.now() - timedelta(days=days_ago)
-    
-    # Create comprehensive text representation
-    application_text = f"""
-    Tenant Application: {app_data['applicantName']}
-    Email: {app_data['applicantEmail']}
-    Phone: {app_data['applicantPhone']}
-    
-    Credit Score: {app_data['creditScore']}
-    Monthly Income: ${app_data['monthlyIncome']:,.2f}
-    Annual Income: ${app_data['annualIncome']:,.2f}
-    Income to Rent Ratio: {app_data['incomeRatio']:.2f}x rent
-    Employer: {app_data['employerName']}
-    
-    Screening Score: {app_data['screeningScore']} ({'Excellent qualifications' if app_data['screeningScore'] == 'green' else 'Good but needs review' if app_data['screeningScore'] == 'yellow' else 'Below threshold'})
-    Status: {app_data['status']}
-    
-    Documents Provided:
-    - Driver's License: {'Yes' if app_data['hasLicense'] else 'No'}
-    - Pay Stubs: {'Yes' if app_data['hasPayStubs'] else 'No'}
-    - Credit Report: {'Yes' if app_data['hasCreditReport'] else 'No'}
-    
-    Property: {app_data['propertyId']}
-    Received: {received_date.isoformat()}
-    """
-    
-    # Add memory to Hyperspell
-    memory_result = await hyperspell_client.add_memory(
-        user_id=user_id,
-        text=application_text,
-        collection="tenant_applications",
-        metadata={
-            "application_id": application_id or f"mock_app_{app_data['applicantEmail'].split('@')[0]}",
-            "property_id": app_data['propertyId'],
-            "applicant_email": app_data['applicantEmail'],
-            "applicant_name": app_data['applicantName'],
-            "status": app_data['status'],
-            "screening_score": app_data['screeningScore'],
-            "credit_score": app_data['creditScore'],
-            "monthly_income": app_data['monthlyIncome'],
-            "income_ratio": app_data['incomeRatio'],
-            "received_at": received_date.isoformat()
-        }
-    )
-    
-    return memory_result
-
-
 async def seed_mock_applications(user_id: str = None):
     """
-    Seed 15 mock applications into both database AND Hyperspell for demo purposes
+    Seed 15 mock applications into the database for demo purposes
     """
     if not user_id:
         user_id = os.getenv("DEFAULT_USER_ID", "demo_user")
@@ -385,91 +324,48 @@ async def seed_mock_applications(user_id: str = None):
     print(f"🌱 Seeding {len(MOCK_APPLICATIONS)} mock applications...")
     print(f"📊 User ID: {user_id}\n")
     
-    hyperspell_client = HyperspellClient()
-    
     # Check required environment variables
     needs_database = os.getenv("APPLICATION_SERVICE_TOKEN", "")
-    needs_hyperspell = hyperspell_client.api_key
     
     if not needs_database:
-        print("⚠️ WARNING: APPLICATION_SERVICE_TOKEN not set - will skip database creation")
-        print("   Applications will only be indexed in Hyperspell")
-    if not needs_hyperspell:
-        print("⚠️ WARNING: HYPERSPELL_API_KEY not set - will skip Hyperspell indexing")
-        print("   Applications will only be created in database")
-    
-    if not needs_database and not needs_hyperspell:
-        print("❌ ERROR: Need at least APPLICATION_SERVICE_TOKEN or HYPERSPELL_API_KEY")
+        print("⚠️ WARNING: APPLICATION_SERVICE_TOKEN not set - cannot create applications")
+        print("   Set APPLICATION_SERVICE_TOKEN to create applications in database")
         return
     
     db_successful = 0
     db_failed = 0
-    hyperspell_successful = 0
-    hyperspell_failed = 0
     
     # Stagger received dates over the past 2 weeks
     for idx, app_data in enumerate(MOCK_APPLICATIONS):
         days_ago = idx % 14  # Distribute over 14 days
         
-        # Step 1: Create in database
-        application_id = None
-        if needs_database:
-            try:
-                application_id = await create_mock_application_in_database(
-                    user_id,
-                    app_data,
-                    property_rent=2000.0,
-                    days_ago=days_ago
-                )
-                if application_id:
-                    db_successful += 1
-                    print(f"✅ [{idx+1}/{len(MOCK_APPLICATIONS)}] Database: {app_data['applicantName']}")
-                else:
-                    db_failed += 1
-                    print(f"⚠️ [{idx+1}/{len(MOCK_APPLICATIONS)}] Database: {app_data['applicantName']} - Failed")
-            except Exception as e:
+        # Create in database
+        try:
+            application_id = await create_mock_application_in_database(
+                user_id,
+                app_data,
+                property_rent=2000.0,
+                days_ago=days_ago
+            )
+            if application_id:
+                db_successful += 1
+                print(f"✅ [{idx+1}/{len(MOCK_APPLICATIONS)}] {app_data['applicantName']} "
+                      f"(Credit: {app_data['creditScore']}, Score: {app_data['screeningScore']}, Status: {app_data['status']})")
+            else:
                 db_failed += 1
-                print(f"❌ [{idx+1}/{len(MOCK_APPLICATIONS)}] Database error: {app_data['applicantName']} - {str(e)}")
-        
-        # Step 2: Index in Hyperspell
-        if needs_hyperspell:
-            try:
-                result = await create_mock_application_memory(
-                    hyperspell_client,
-                    user_id,
-                    app_data,
-                    application_id,  # Use real DB ID if available
-                    property_rent=2000.0,
-                    days_ago=days_ago
-                )
-                
-                if result.get("success"):
-                    hyperspell_successful += 1
-                    print(f"   ✅ Hyperspell: Indexed {app_data['applicantName']} "
-                          f"(Credit: {app_data['creditScore']}, Score: {app_data['screeningScore']}, Status: {app_data['status']})")
-                else:
-                    hyperspell_failed += 1
-                    print(f"   ⚠️ Hyperspell: {app_data['applicantName']} - {result.get('error', 'Unknown error')}")
-            except Exception as e:
-                hyperspell_failed += 1
-                print(f"   ❌ Hyperspell error: {app_data['applicantName']} - {str(e)}")
+                print(f"⚠️ [{idx+1}/{len(MOCK_APPLICATIONS)}] {app_data['applicantName']} - Failed")
+        except Exception as e:
+            db_failed += 1
+            print(f"❌ [{idx+1}/{len(MOCK_APPLICATIONS)}] {app_data['applicantName']} - {str(e)}")
         
         # Small delay between requests
         await asyncio.sleep(0.5)
     
     print(f"\n📊 Summary:")
-    if needs_database:
-        print(f"   📝 Database: ✅ {db_successful} created, ❌ {db_failed} failed")
-    if needs_hyperspell:
-        print(f"   🔍 Hyperspell: ✅ {hyperspell_successful} indexed, ❌ {hyperspell_failed} failed")
+    print(f"   📝 Database: ✅ {db_successful} created, ❌ {db_failed} failed")
     
     if db_successful > 0:
         print(f"\n🎉 {db_successful} applications created in database - they should appear on /applications page!")
-    if hyperspell_successful > 0:
-        print(f"\n🎯 You can now query Hyperspell with:")
-        print(f"   - 'Show me top applicants with credit scores above 700'")
-        print(f"   - 'Rank applicants by credit score and income ratio'")
-        print(f"   - 'Which applicants have green screening scores?'")
 
 
 if __name__ == "__main__":

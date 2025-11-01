@@ -6,13 +6,11 @@ Shows if emails have been received and processed
 import asyncio
 import os
 from backend_modules.agentmail_service import AgentmailClient
-from backend_modules.hyperspell_service import HyperspellClient
 
 async def check_inbox_status():
     """Check Agentmail inbox status"""
     
     agentmail_client = AgentmailClient()
-    hyperspell_client = HyperspellClient()
     
     inbox_id = os.getenv("AGENTMAIL_INBOX_ID", "")
     user_id = os.getenv("DEFAULT_USER_ID", "default_user")
@@ -55,30 +53,6 @@ async def check_inbox_status():
             else:
                 print(f"      ✅ All messages read")
         print()
-    
-    # Check 3: Query Hyperspell to see if emails are indexed
-    print("3️⃣ Checking if emails are indexed in Hyperspell...")
-    if hyperspell_client.api_key:
-        try:
-            query_result = await hyperspell_client.query(
-                user_id=user_id,
-                query="Show me all emails from Agentmail",
-                collections=["agentmail_emails"],
-                limit=10
-            )
-            if query_result.get("success"):
-                docs = query_result.get("documents", [])
-                print(f"   ✅ Found {len(docs)} email(s) indexed in Hyperspell")
-                if docs:
-                    print(f"   📧 Most recent emails:")
-                    for doc in docs[:3]:
-                        print(f"      - {doc.get('metadata', {}).get('subject', 'No subject')}")
-            else:
-                print(f"   ⚠️  No emails found in Hyperspell (may not be indexed yet)")
-        except Exception as e:
-            print(f"   ❌ Error querying Hyperspell: {e}")
-    else:
-        print(f"   ⚠️  Hyperspell not configured")
     
     print("\n✅ Status check complete!")
     print("\n💡 Tips:")

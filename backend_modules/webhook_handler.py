@@ -9,7 +9,6 @@ from typing import Dict, Any, Optional
 from datetime import datetime
 from backend_modules.inbox_monitor import process_incoming_email_from_thread, extract_contact_info
 from backend_modules.agentmail_service import AgentmailClient
-from backend_modules.hyperspell_service import HyperspellClient
 
 async def handle_agentmail_webhook(webhook_payload: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -218,23 +217,6 @@ John Smith"""
                             print(f"📧 Received reply from tenant {sender_email} for application {application_id}")
                             print(f"   Reply preview: {email_body[:200]}...")
                             
-                            # Store reply in Hyperspell for context
-                            try:
-                                hyperspell_client = HyperspellClient()
-                                await hyperspell_client.add_memory(
-                                    user_id=user_id,
-                                    text=f"Tenant reply from {sender_email} for application {application_id}: {email_body}",
-                                    collection="tenant_applications",
-                                    metadata={
-                                        "application_id": application_id,
-                                        "email": sender_email,
-                                        "type": "tenant_reply",
-                                        "timestamp": datetime.now().isoformat()
-                                    }
-                                )
-                                print(f"   💾 Indexed tenant reply in Hyperspell")
-                            except Exception as index_error:
-                                print(f"   ⚠️ Could not index reply: {index_error}")
                             
                             return {
                                 "success": True,
@@ -295,15 +277,6 @@ John Smith"""
             user_id=user_id
         )
         
-        # ALWAYS index this email in Hyperspell (even if not an application)
-        try:
-            from backend_modules.email_indexer import index_single_email_thread
-            index_result = await index_single_email_thread(user_id, thread_id)
-            if index_result.get("success"):
-                print(f"   💾 Indexed email thread {thread_id} in Hyperspell")
-        except Exception as index_error:
-            print(f"   ⚠️ Could not index email in Hyperspell: {index_error}")
-        
         # Mark message as processed by updating labels (optional - can do this later via API)
         # For now, we rely on the processed_email_ids set in inbox_monitor
         
@@ -312,8 +285,7 @@ John Smith"""
             "event_id": event_id,
             "message_id": message_id,
             "thread_id": thread_id,
-            "result": result,
-            "indexed_in_hyperspell": index_result.get("success", False) if 'index_result' in locals() else False
+            "result": result
         }
         
     except Exception as e:

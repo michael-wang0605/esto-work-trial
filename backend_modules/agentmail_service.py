@@ -111,8 +111,8 @@ class AgentmailClient:
         we fetch full thread details for all threads and check for unread messages.
         
         Args:
-            user_id: Optional user ID for Hyperspell indexing
-            auto_index: If True, automatically extract and index email info to Hyperspell
+            user_id: Optional user ID for processing
+            auto_index: If True, automatically extract email info
         """
         if not self.api_key or not self.inbox_id:
             print("⚠️ Agentmail credentials not configured")
@@ -152,21 +152,19 @@ class AgentmailClient:
                 if unread_messages:
                     print(f"📧 Thread {thread_id} has {len(unread_messages)} unread message(s)")
                     
-                    # Automatically extract and index email info to Hyperspell
+                    # Extract email info if requested
                     if auto_index and user_id:
                         try:
-                            extract_result = await self.extract_and_index_email_info(
-                                thread=full_thread,
-                                user_id=user_id
+                            extract_result = await self.extract_email_info(
+                                thread=full_thread
                             )
                             if extract_result.get("success"):
                                 abstracted = extract_result.get("abstracted_info", {})
                                 print(f"   ✅ Extracted info: name={abstracted.get('name')}, credit={abstracted.get('credit_score')}, income=${abstracted.get('monthly_income', 0):,.2f}")
-                                print(f"   ✅ Indexed in Hyperspell")
                             else:
-                                print(f"   ⚠️ Could not extract/index email info: {extract_result.get('error')}")
+                                print(f"   ⚠️ Could not extract email info: {extract_result.get('error')}")
                         except Exception as extract_error:
-                            print(f"   ⚠️ Error extracting/indexing email info: {extract_error}")
+                            print(f"   ⚠️ Error extracting email info: {extract_error}")
                     
                     new_threads.append(full_thread)
             
@@ -308,23 +306,18 @@ class AgentmailClient:
             print(f"❌ Error downloading attachment: {e}")
             raise
     
-    async def extract_and_index_email_info(
+    async def extract_email_info(
         self,
-        thread: Dict[str, Any],
-        user_id: str,
-        hyperspell_client: Optional[Any] = None
+        thread: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        Extract email text from thread messages and abstract important info,
-        then send to Hyperspell
+        Extract email text from thread messages and abstract important info
         
         Args:
             thread: Thread dict from get_thread() which includes messages
-            user_id: User ID for Hyperspell
-            hyperspell_client: Optional HyperspellClient instance
         
         Returns:
-            Dict with extraction and indexing results
+            Dict with extraction results
         """
         try:
             # Get messages from thread
@@ -349,35 +342,13 @@ class AgentmailClient:
             # Extract important information
             abstracted_info = self._extract_important_info(full_email_text, thread)
             
-            # Create formatted text for Hyperspell
-            hyperspell_text = self._format_for_hyperspell(abstracted_info, thread, full_email_text)
-            
-            # Send to Hyperspell
-            if hyperspell_client is None:
-                from backend_modules.hyperspell_service import HyperspellClient
-                hyperspell_client = HyperspellClient()
-            
-            memory_result = await hyperspell_client.add_memory(
-                user_id=user_id,
-                text=hyperspell_text,
-                collection="tenant_applications",
-                metadata={
-                    "thread_id": thread.get("thread_id"),
-                    "subject": thread.get("subject"),
-                    "senders": thread.get("senders", []),
-                    "recipients": thread.get("recipients", []),
-                    **abstracted_info
-                }
-            )
-            
             return {
                 "success": True,
-                "abstracted_info": abstracted_info,
-                "hyperspell_result": memory_result
+                "abstracted_info": abstracted_info
             }
             
         except Exception as e:
-            print(f"❌ Error extracting and indexing email info: {e}")
+            print(f"❌ Error extracting email info: {e}")
             import traceback
             traceback.print_exc()
             return {"success": False, "error": str(e)}
@@ -509,57 +480,6 @@ class AgentmailClient:
         
         return info
     
-    def _format_for_hyperspell(
-        self,
-        abstracted_info: Dict[str, Any],
-        thread: Dict[str, Any],
-        full_email_text: str
-    ) -> str:
-        """
-        Format extracted information for Hyperspell indexing
-        Creates a structured text representation
-        """
-        lines = []
-        
-        # Add basic info
-        lines.append("Tenant Application Email")
-        lines.append("=" * 50)
-        lines.append("")
-        
-        if abstracted_info.get("name"):
-            lines.append(f"Applicant Name: {abstracted_info['name']}")
-        if abstracted_info.get("email"):
-            lines.append(f"Email: {abstracted_info['email']}")
-        if abstracted_info.get("phone"):
-            lines.append(f"Phone: {abstracted_info['phone']}")
-        
-        lines.append("")
-        lines.append("Financial Information:")
-        if abstracted_info.get("credit_score"):
-            lines.append(f"  Credit Score: {abstracted_info['credit_score']}")
-        if abstracted_info.get("monthly_income"):
-            lines.append(f"  Monthly Income: ${abstracted_info['monthly_income']:,.2f}")
-        if abstracted_info.get("annual_income"):
-            lines.append(f"  Annual Income: ${abstracted_info['annual_income']:,.2f}")
-        if abstracted_info.get("employer"):
-            lines.append(f"  Employer: {abstracted_info['employer']}")
-        
-        if abstracted_info.get("property_interest"):
-            lines.append("")
-            lines.append(f"Property Interest: {abstracted_info['property_interest']}")
-        
-        lines.append("")
-        lines.append("Email Subject:")
-        lines.append(f"  {thread.get('subject', 'No Subject')}")
-        
-        lines.append("")
-        lines.append("Email Text (first 1000 chars):")
-        lines.append("  " + full_email_text[:1000].replace("\n", "\n  "))
-        
-        lines.append("")
-        lines.append(f"Received: {thread.get('received_timestamp', thread.get('timestamp', 'Unknown'))}")
-        
-        return "\n".join(lines)
 
 # Email templates
 def get_approval_email_template(applicant_name: str, property_name: str = "the property") -> tuple[str, str]:

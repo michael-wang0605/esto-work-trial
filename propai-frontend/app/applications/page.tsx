@@ -115,27 +115,44 @@ export default function ApplicationsPage() {
   };
 
   const loadApplications = async () => {
+    const url = `/api/applications${statusFilter !== "all" ? `?status=${statusFilter}` : ""}`;
     try {
       setLoading(true);
       setError(null);
-      const url = `/api/applications${statusFilter !== "all" ? `?status=${statusFilter}` : ""}`;
       const response = await fetch(url);
+      
       if (!response.ok) {
-        throw new Error("Failed to load applications");
+        // Try to extract detailed error from response
+        let errorMessage = "Failed to load applications";
+        try {
+          const errorData = await response.json();
+          if (errorData?.error) {
+            errorMessage = errorData.error;
+            if (errorData.details) {
+              errorMessage += `: ${errorData.details}`;
+            }
+          }
+        } catch {
+          // If parsing fails, use generic error
+          errorMessage = `Failed to load applications (${response.status})`;
+        }
+        throw new Error(errorMessage);
       }
+      
       const data = await response.json();
       // Merge API applications with hardcoded applications, removing duplicates
       const apiApplications = data.applications || [];
-      const hardcodedAppIds = new Set(hardcodedApplicationsRef.current.map(app => app.id));
+      const hardcodedAppIds = new Set(hardcodedApplicationsRef.current.map((app: any) => app.id));
       // Filter out API apps that are duplicates of hardcoded apps
-      const uniqueApiApps = apiApplications.filter(app => !hardcodedAppIds.has(app.id));
+      const uniqueApiApps = apiApplications.filter((app: any) => !hardcodedAppIds.has(app.id));
       // Combine: hardcoded apps first (most recent), then unique API apps
       const allApplications = [...hardcodedApplicationsRef.current, ...uniqueApiApps];
       console.log("Merged applications - hardcoded:", hardcodedApplicationsRef.current.length, "API:", uniqueApiApps.length, "Total:", allApplications.length);
       setApplications(allApplications);
     } catch (err) {
       console.error("Failed to load applications:", err);
-      setError(err instanceof Error ? err.message : "Failed to load applications");
+      const errorMessage = err instanceof Error ? err.message : "Failed to load applications";
+      setError(errorMessage);
       // On error, still show hardcoded apps
       setApplications([...hardcodedApplicationsRef.current]);
     } finally {

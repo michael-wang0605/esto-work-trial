@@ -2064,9 +2064,9 @@ async def run_background_check_endpoint(application_id: str, request: Request):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error running background check: {str(e)}")
 
-# Calendar endpoints removed - system now uses Hyperspell queries to find best tenants
+# Calendar endpoints removed - system uses database queries to find best tenants
 
-# Scheduling endpoints removed - system now uses Hyperspell queries to find best tenants
+# Scheduling endpoints removed - system uses database queries to find best tenants
 # Approved applicants can be contacted directly by property managers
 
 @app.post("/api/tenant-applications/{application_id}/send-rejection-email")
@@ -2511,50 +2511,15 @@ async def check_agentmail_inbox(request: Request, background_tasks: BackgroundTa
         print(f"Error checking inbox: {e}")
         raise HTTPException(status_code=500, detail=f"Error checking inbox: {str(e)}")
 
-@app.post("/api/agentmail/index-all")
-async def index_all_emails(background_tasks: BackgroundTasks):
-    """Index ALL emails from Agentmail into Hyperspell"""
-    try:
-        from backend_modules.email_indexer import index_all_emails_from_agentmail
-        
-        user_id = os.getenv("DEFAULT_USER_ID", "default_user")
-        inbox_id = os.getenv("AGENTMAIL_INBOX_ID", "")
-        
-        # Run in background
-        background_tasks.add_task(index_all_emails_from_agentmail, user_id, inbox_id)
-        
-        return {"success": True, "message": "Email indexing initiated - check console for progress"}
-    except Exception as e:
-        print(f"Error indexing emails: {e}")
-        raise HTTPException(status_code=500, detail=f"Error indexing emails: {str(e)}")
-
-@app.get("/api/agentmail/index-status")
-async def get_index_status():
-    """Get status of email indexing"""
-    try:
-        from backend_modules.email_indexer import indexed_email_ids
-        
-        return {
-            "success": True,
-            "total_indexed": len(indexed_email_ids),
-            "indexed_ids": list(indexed_email_ids)[:100]  # First 100
-        }
-    except Exception as e:
-        print(f"Error getting index status: {e}")
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
-
 @app.get("/api/agentmail/inbox-status")
 async def get_inbox_status():
     """Check Agentmail inbox status - shows if emails have been received"""
     try:
         from backend_modules.agentmail_service import AgentmailClient
-        from backend_modules.hyperspell_service import HyperspellClient
         
         agentmail_client = AgentmailClient()
-        hyperspell_client = HyperspellClient()
         
         inbox_id = os.getenv("AGENTMAIL_INBOX_ID", "")
-        user_id = os.getenv("DEFAULT_USER_ID", "default_user")
         
         # Get all threads from Agentmail
         threads = await agentmail_client.list_threads(inbox_id=inbox_id)
@@ -2584,27 +2549,11 @@ async def get_inbox_status():
                     "last_updated": first_msg.get("date") or first_msg.get("created_at")
                 })
         
-        # Check Hyperspell indexing
-        indexed_count = 0
-        if hyperspell_client.api_key:
-            try:
-                query_result = await hyperspell_client.query(
-                    user_id=user_id,
-                    query="Show me all emails from Agentmail",
-                    collections=["agentmail_emails"],
-                    limit=100
-                )
-                if query_result.get("success"):
-                    indexed_count = len(query_result.get("documents", []))
-            except:
-                pass
-        
         return {
             "success": True,
             "inbox_id": inbox_id,
             "total_threads": len(threads),
             "threads": thread_details,
-            "indexed_in_hyperspell": indexed_count,
             "webhook_configured": True  # Assuming it is if they're asking
         }
     except Exception as e:

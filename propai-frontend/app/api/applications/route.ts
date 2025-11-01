@@ -8,7 +8,8 @@ export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     
-    if (!session?.user?.id) {
+    const userId = (session?.user as any)?.id;
+    if (!userId) {
       return NextResponse.json(
         { error: "Unauthorized" },
         { status: 401 }
@@ -20,7 +21,7 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search");
 
     const where: any = {
-      userId: session.user.id
+      userId
     };
 
     if (status && status !== "all") {
@@ -56,8 +57,31 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error("Error fetching applications:", error);
+    
+    // Provide more detailed error information
+    let errorMessage = "Failed to fetch applications";
+    let errorDetails = null;
+    
+    if (error instanceof Error) {
+      errorMessage = error.message;
+      
+      // Check for common Prisma connection errors
+      if (error.message.includes("connection") || error.message.includes("connect")) {
+        errorMessage = "Failed to connect to database. Please check your DATABASE_URL configuration.";
+        errorDetails = process.env.NODE_ENV === "development" 
+          ? error.message 
+          : "Database connection failed. Check environment variables.";
+      } else if (error.message.includes("timeout")) {
+        errorMessage = "Database connection timed out. The database may be unavailable.";
+      }
+    }
+    
     return NextResponse.json(
-      { error: "Failed to fetch applications" },
+      { 
+        error: errorMessage,
+        details: errorDetails,
+        type: "database_error"
+      },
       { status: 500 }
     );
   }
@@ -97,9 +121,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const userId = (session.user as any).id;
     const application = await prisma.tenantApplication.create({
       data: {
-        userId: session.user.id,
+        userId,
         propertyId: propertyId || null,
         applicantName,
         applicantEmail,
