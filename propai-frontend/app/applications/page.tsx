@@ -49,6 +49,7 @@ export default function ApplicationsPage() {
   const [expandedThreads, setExpandedThreads] = useState<Set<string>>(new Set());
   const [lastUpdateTime, setLastUpdateTime] = useState<Date>(new Date());
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const loadApplicationsRef = useRef<() => Promise<void>>();
   const [bestApplicantModalOpen, setBestApplicantModalOpen] = useState(false);
   const [bestApplicantResult, setBestApplicantResult] = useState<any>(null);
   const [bestApplicantLoading, setBestApplicantLoading] = useState(false);
@@ -56,11 +57,11 @@ export default function ApplicationsPage() {
   const refreshCountRef = useRef<number>(0);
   const hardcodedApplicationsRef = useRef<TenantApplication[]>([]);
 
-  // Memoize loadApplications to prevent unnecessary re-renders and allow safe use in dependency arrays
+  // Memoize loadApplications to prevent unnecessary re-renders
   const loadApplications = useCallback(async () => {
     const url = `/api/applications${statusFilter !== "all" ? `?status=${statusFilter}` : ""}`;
     try {
-      setLoading(true);
+      // Don't set loading to true on every poll - only on initial load or filter change
       setError(null);
       const response = await fetch(url);
       
@@ -90,46 +91,87 @@ export default function ApplicationsPage() {
       const uniqueApiApps = apiApplications.filter((app: any) => !hardcodedAppIds.has(app.id));
       // Combine: hardcoded apps first (most recent), then unique API apps
       const allApplications = [...hardcodedApplicationsRef.current, ...uniqueApiApps];
-      console.log("Merged applications - hardcoded:", hardcodedApplicationsRef.current.length, "API:", uniqueApiApps.length, "Total:", allApplications.length);
-      setApplications(allApplications);
+      
+      // Only update state if applications actually changed to prevent unnecessary re-renders
+      setApplications(prev => {
+        const prevIds = new Set(prev.map(app => app.id));
+        const newIds = new Set(allApplications.map(app => app.id));
+        
+        // Check if arrays are different
+        if (prev.length !== allApplications.length || 
+            !Array.from(newIds).every(id => prevIds.has(id)) ||
+            !Array.from(prevIds).every(id => newIds.has(id))) {
+          console.log("Merged applications - hardcoded:", hardcodedApplicationsRef.current.length, "API:", uniqueApiApps.length, "Total:", allApplications.length);
+          return allApplications;
+        }
+        
+        // Applications are the same, return previous to prevent re-render
+        return prev;
+      });
     } catch (err) {
       console.error("Failed to load applications:", err);
       const errorMessage = err instanceof Error ? err.message : "Failed to load applications";
       setError(errorMessage);
       // On error, still show hardcoded apps
-      setApplications([...hardcodedApplicationsRef.current]);
-    } finally {
-      setLoading(false);
+      setApplications(prev => {
+        const hardcodedApps = [...hardcodedApplicationsRef.current];
+        const prevIds = new Set(prev.map(app => app.id));
+        const newIds = new Set(hardcodedApps.map(app => app.id));
+        
+        if (prev.length !== hardcodedApps.length ||
+            !Array.from(newIds).every(id => prevIds.has(id)) ||
+            !Array.from(prevIds).every(id => newIds.has(id))) {
+          return hardcodedApps;
+        }
+        return prev;
+      });
     }
   }, [statusFilter]);
 
-  // Load applications immediately when statusFilter changes
+  // Keep ref updated with latest loadApplications function
   useEffect(() => {
-    loadApplications();
+    loadApplicationsRef.current = loadApplications;
   }, [loadApplications]);
 
-  useEffect(() => {
-    // Check inbox on initial page load only
-    checkAgentmailInbox().then(() => {
-      loadApplications();
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Real-time polling for status updates - use loadApplications in dependency array since it's memoized
+  // Real-time polling for status updates - uses ref to avoid restarting interval unnecessarily
   useEffect(() => {
     // Poll every 3 seconds for real-time updates
     pollingIntervalRef.current = setInterval(() => {
-      loadApplications();
+      if (loadApplicationsRef.current) {
+        loadApplicationsRef.current();
+      }
       setLastUpdateTime(new Date());
     }, 3000);
 
     return () => {
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
       }
     };
-  }, [loadApplications]);
+    // Empty dependency array - interval runs continuously, function is always latest via ref
+  }, []);
+
+  // Load applications immediately when statusFilter changes (with loading state)
+  useEffect(() => {
+    setLoading(true);
+    loadApplications().finally(() => {
+      setLoading(false);
+    });
+  }, [statusFilter]); // Direct dependency on statusFilter to avoid cascade
+
+  useEffect(() => {
+    // Check inbox on initial page load only
+    let mounted = true;
+    checkAgentmailInbox().then(() => {
+      if (mounted && loadApplicationsRef.current) {
+        loadApplicationsRef.current();
+      }
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const checkAgentmailInbox = async () => {
     try {
