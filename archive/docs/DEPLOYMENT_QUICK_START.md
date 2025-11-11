@@ -53,7 +53,7 @@
 HOST=0.0.0.0
 PORT=8000
 RELOAD=false
-LLM_API_KEY=AIzaSyBG2RIEPLO_d37g4X9TWMRxJoG74jWO-g0
+LLM_API_KEY=YOUR_GEMINI_API_KEY_HERE
 LLM_MODEL=gemini-2.0-flash
 LLM_VISION_MODEL=gemini-2.0-flash
 LLM_URL=https://generativelanguage.googleapis.com/v1beta/models

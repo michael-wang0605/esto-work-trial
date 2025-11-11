@@ -54,7 +54,7 @@ export FRONTEND_ORIGIN="http://localhost:3000"  # Default
 export USER_ID="cmgk8d5yz0000l104mkwr8j0w"  # Optional, has default
 
 # Gemini API key is hardcoded in the script
-# Key: AIzaSyB19XVVUEizOwjiR4OdgdQD_UPvQMHnnC4
+# Key: YOUR_GEMINI_API_KEY_HERE
 ```
 
 ## What the Script Does

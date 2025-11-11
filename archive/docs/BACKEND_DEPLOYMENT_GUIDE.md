@@ -77,7 +77,7 @@ The frontend is currently using mock data to demonstrate the UI functionality. T
 
 Make sure these are set in Render:
 
-- `LLM_API_KEY`: `AIzaSyBG2RIEPLO_d37g4X9TWMRxJoG74jWO-g0`
+- `LLM_API_KEY`: `YOUR_GEMINI_API_KEY_HERE`
 - `LLM_MODEL`: `gemini-2.0-flash`
 - `LLM_VISION_MODEL`: `gemini-2.0-flash`
 - `LLM_URL`: `https://generativelanguage.googleapis.com/v1beta/models`
